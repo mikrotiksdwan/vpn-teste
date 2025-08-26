@@ -17,12 +17,8 @@ $db_user = 'radius';
 $db_pass = 'rt25rt--2025';
 
 // PHPMailer
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
-require 'lib/PHPMailer/Exception.php';
-require 'lib/PHPMailer/PHPMailer.php';
-require 'lib/PHPMailer/SMTP.php';
+require 'lib/class.phpmailer.php';
+require 'lib/class.smtp.php';
 
 // Conexão com o banco
 try {
@@ -138,7 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             $recovery_link = "http://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?token=$token";
 
-            $mail = new PHPMailer(true);
+            $mail = new PHPMailer();
             try {
                 //Server settings
                 $mail->isSMTP();
@@ -159,7 +155,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $mail->Body    = "Olá,\n\nClique no link a seguir para redefinir sua senha:\n$recovery_link\n\nO link expira em 1 hora.\n\nSe você não solicitou isso, ignore este email.";
 
                 $mail->send();
-            } catch (Exception $e) {
+            } catch (phpmailerException $e) {
                 //Do not reveal detailed error to user, but maybe log it
                 //error_log("Message could not be sent. Mailer Error: {$mail->ErrorInfo}");
             }
