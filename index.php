@@ -91,10 +91,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif (strlen($new_password) < 8) {
                 $message = '<div class="alert alert-danger">A senha deve ter pelo menos 8 caracteres!</div>';
             } else {
-                $new_hash = generate_ssha_password($new_password);
+                $full_hash = generate_ssha_password($new_password);
+                $hash_to_store = substr($full_hash, 6); // Remove '{SSHA}'
                 $stmt = $pdo->prepare("UPDATE radcheck SET value = ? WHERE email = ? AND attribute = 'SSHA-Password'");
                 
-                if ($stmt->execute([$new_hash, $_SESSION['user_email']])) {
+                if ($stmt->execute([$hash_to_store, $_SESSION['user_email']])) {
                     $message = '<div class="alert alert-success">Senha alterada com sucesso!</div>';
                     unset($_SESSION['user_logged_in']);
                     shell_exec('sudo systemctl restart freeradius');
@@ -149,11 +150,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = '<div class="alert alert-danger">A senha deve ter pelo menos 8 caracteres.</div>';
             $current_view = 'reset';
         } else {
-            $new_hash = generate_ssha_password($new_password);
+            $full_hash = generate_ssha_password($new_password);
+            $hash_to_store = substr($full_hash, 6); // Remove '{SSHA}'
             $email = $user['email'];
 
             $stmt = $pdo->prepare("UPDATE radcheck SET value = ?, recovery_token = NULL, token_expires = NULL WHERE email = ? AND attribute = 'SSHA-Password'");
-            if ($stmt->execute([$new_hash, $email])) {
+            if ($stmt->execute([$hash_to_store, $email])) {
                 $stmt_clear = $pdo->prepare("UPDATE radcheck SET recovery_token = NULL, token_expires = NULL WHERE email = ?");
                 $stmt_clear->execute([$email]);
 
