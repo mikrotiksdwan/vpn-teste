@@ -69,7 +69,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$username]);
         $user = $stmt->fetch();
         
-        if ($user && verify_ssha_password($password, $user['password_hash'])) {
+        if ($user && verify_ssha_password($password, '{SSHA}' . $user['password_hash'])) {
             $_SESSION['user_email'] = $user['email'];
             $_SESSION['user_logged_in'] = true;
             $current_view = 'change';
