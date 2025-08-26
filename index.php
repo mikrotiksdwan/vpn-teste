@@ -16,10 +16,6 @@ $db_name = 'radius';
 $db_user = 'radius';
 $db_pass = 'rt25rt--2025';
 
-// PHPMailer
-require 'lib/class.phpmailer.php';
-require 'lib/class.smtp.php';
-
 // Conexão com o banco
 try {
     $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8", $db_user, $db_pass);
@@ -43,6 +39,68 @@ function verify_ssha_password($password, $ssha_hash) {
     $salt = substr($decoded, 20);
     
     return sha1($password . $salt, true) === $hash;
+}
+
+function send_smtp_email($host, $port, $user, $pass, $to, $from_email, $from_name, $subject, $body) {
+    $socket = @fsockopen($host, $port, $errno, $errstr, 15);
+    if (!$socket) {
+        //error_log("SMTP Error: Could not connect to $host:$port ($errno) $errstr");
+        return false;
+    }
+
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '220') {
+        //error_log("SMTP Error: " . $server_response);
+        return false;
+    }
+
+    fputs($socket, 'EHLO ' . $_SERVER['SERVER_NAME'] . "\r\n");
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '250') {
+        fputs($socket, 'HELO ' . $_SERVER['SERVER_NAME'] . "\r\n");
+        fgets($socket, 4096);
+    }
+
+    fputs($socket, "AUTH LOGIN\r\n");
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '334') { return false; }
+
+    fputs($socket, base64_encode($user) . "\r\n");
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '334') { return false; }
+
+    fputs($socket, base64_encode($pass) . "\r\n");
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '235') { return false; }
+
+    fputs($socket, "MAIL FROM: <$from_email>\r\n");
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '250') { return false; }
+
+    fputs($socket, "RCPT TO: <$to>\r\n");
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '250') { return false; }
+
+    fputs($socket, "DATA\r\n");
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '354') { return false; }
+
+    $headers = "From: \"$from_name\" <$from_email>\r\n";
+    $headers .= "To: <$to>\r\n";
+    $headers .= "Subject: $subject\r\n";
+    $headers .= "Date: " . date('r') . "\r\n";
+    $headers .= "MIME-Version: 1.0\r\n";
+    $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
+    $headers .= "Content-Transfer-Encoding: 8bit\r\n";
+
+    fputs($socket, $headers . "\r\n" . $body . "\r\n.\r\n");
+    $server_response = fgets($socket, 4096);
+    if (substr($server_response, 0, 3) != '250') { return false; }
+
+    fputs($socket, "QUIT\r\n");
+    fclose($socket);
+
+    return true;
 }
 
 // Logout
@@ -133,32 +191,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$token, $expires, $email]);
 
             $recovery_link = "http://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?token=$token";
+            $subject = "Recuperação de Senha - VPN Portal";
+            $body = "Olá,\n\nClique no link a seguir para redefinir sua senha:\n$recovery_link\n\nO link expira em 1 hora.\n\nSe você não solicitou isso, ignore este email.";
 
-            $mail = new PHPMailer();
-            try {
-                //Server settings
-                $mail->isSMTP();
-                $mail->Host       = $smtp_host;
-                $mail->SMTPAuth   = true;
-                $mail->Username   = $smtp_user;
-                $mail->Password   = $smtp_pass;
-                $mail->SMTPSecure = $smtp_secure;
-                $mail->Port       = $smtp_port;
-
-                //Recipients
-                $mail->setFrom($smtp_from_email, $smtp_from_name);
-                $mail->addAddress($email);
-
-                // Content
-                $mail->isHTML(false);
-                $mail->Subject = "Recuperação de Senha - VPN Portal";
-                $mail->Body    = "Olá,\n\nClique no link a seguir para redefinir sua senha:\n$recovery_link\n\nO link expira em 1 hora.\n\nSe você não solicitou isso, ignore este email.";
-
-                $mail->send();
-            } catch (phpmailerException $e) {
-                //Do not reveal detailed error to user, but maybe log it
-                //error_log("Message could not be sent. Mailer Error: {$mail->ErrorInfo}");
-            }
+            send_smtp_email($smtp_host, $smtp_port, $smtp_user, $smtp_pass, $email, $smtp_from_email, $smtp_from_name, $subject, $body);
         }
 
         $message = '<div class="alert alert-info">Se um email correspondente for encontrado, um link de recuperação foi enviado. Verifique sua caixa de entrada e spam.</div>';
