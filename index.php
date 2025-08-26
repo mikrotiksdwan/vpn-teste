@@ -1,11 +1,28 @@
 <?php
 session_start();
 
+// Configurações de E-mail (SMTP)
+$smtp_host = 'smtp.example.com';
+$smtp_port = 587;
+$smtp_user = 'user@example.com';
+$smtp_pass = 'your_password';
+$smtp_secure = 'tls'; // 'ssl' or 'tls'
+$smtp_from_email = 'no-reply@example.com';
+$smtp_from_name = 'VPN Portal';
+
 // Configurações do banco
 $db_host = 'localhost';
 $db_name = 'radius';
 $db_user = 'radius';
 $db_pass = 'rt25rt--2025';
+
+// PHPMailer
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+require 'lib/PHPMailer/Exception.php';
+require 'lib/PHPMailer/PHPMailer.php';
+require 'lib/PHPMailer/SMTP.php';
 
 // Conexão com o banco
 try {
@@ -120,11 +137,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$token, $expires, $email]);
 
             $recovery_link = "http://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?token=$token";
-            $subject = "Recuperação de Senha - VPN Portal";
-            $body = "Olá,\n\nClique no link a seguir para redefinir sua senha:\n$recovery_link\n\nO link expira em 1 hora.\n\nSe você não solicitou isso, ignore este email.";
-            $headers = "From: no-reply@vpnportal.com";
 
-            mail($email, $subject, $body, $headers);
+            $mail = new PHPMailer(true);
+            try {
+                //Server settings
+                $mail->isSMTP();
+                $mail->Host       = $smtp_host;
+                $mail->SMTPAuth   = true;
+                $mail->Username   = $smtp_user;
+                $mail->Password   = $smtp_pass;
+                $mail->SMTPSecure = $smtp_secure;
+                $mail->Port       = $smtp_port;
+
+                //Recipients
+                $mail->setFrom($smtp_from_email, $smtp_from_name);
+                $mail->addAddress($email);
+
+                // Content
+                $mail->isHTML(false);
+                $mail->Subject = "Recuperação de Senha - VPN Portal";
+                $mail->Body    = "Olá,\n\nClique no link a seguir para redefinir sua senha:\n$recovery_link\n\nO link expira em 1 hora.\n\nSe você não solicitou isso, ignore este email.";
+
+                $mail->send();
+            } catch (Exception $e) {
+                //Do not reveal detailed error to user, but maybe log it
+                //error_log("Message could not be sent. Mailer Error: {$mail->ErrorInfo}");
+            }
         }
 
         $message = '<div class="alert alert-info">Se um email correspondente for encontrado, um link de recuperação foi enviado. Verifique sua caixa de entrada e spam.</div>';
