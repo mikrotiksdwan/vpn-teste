@@ -8,11 +8,11 @@ These instructions assume you have a working Ubuntu server with `sudo` access.
 
 ### 1. Install System Dependencies (PHP & Composer)
 
-First, update your package list and install PHP, required PHP extensions, and Composer.
+First, update your package list and install PHP, required PHP extensions, Composer, and Git.
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y php-cli php-mbstring php-xml php-curl unzip git
+sudo apt-get install -y php-cli php-mbstring php-xml php-curl unzip git nodejs npm
 # Download and install Composer
 curl -sS https://getcomposer.org/installer | php
 sudo mv composer.phar /usr/local/bin/composer
@@ -27,7 +27,7 @@ git clone <your-repository-url>
 cd <project-directory>
 ```
 
-### 3. Install Project Dependencies
+### 3. Install PHP Dependencies
 
 Install the PHP dependencies using Composer.
 
@@ -35,7 +35,19 @@ Install the PHP dependencies using Composer.
 composer install --no-dev --optimize-autoloader
 ```
 
-### 4. Configure Environment
+### 4. Install Frontend Dependencies & Build Assets
+This project uses Vite to manage and compile CSS assets. You must install the NPM dependencies and build the assets.
+
+```bash
+# Install NPM dependencies
+npm install
+
+# Compile assets for production
+npm run build
+```
+This will create a `public/build` directory containing the compiled CSS and a `manifest.json` file, which is required for the application to run.
+
+### 5. Configure Environment
 
 Copy the example environment file and generate an application key.
 
@@ -70,7 +82,7 @@ MAIL_FROM_ADDRESS="noreply@example.com"
 MAIL_FROM_NAME="${APP_NAME}"
 ```
 
-### 5. Configure Web Server (Nginx Example)
+### 6. Configure Web Server (Nginx Example)
 
 Your web server must be configured to serve the application from the `public` directory. Here is an example Nginx server block:
 
@@ -98,7 +110,7 @@ server {
 ```
 Remember to enable the site and restart Nginx.
 
-### 6. Set Directory Permissions
+### 7. Set Directory Permissions
 
 The web server user (e.g., `www-data`) needs write permissions on the `storage` and `bootstrap/cache` directories.
 
@@ -107,7 +119,7 @@ sudo chown -R www-data:www-data storage bootstrap/cache
 sudo chmod -R 775 storage bootstrap/cache
 ```
 
-### 7. Important: FreeRADIUS Service Restart
+### 8. Important: FreeRADIUS Service Restart
 
 This application restarts the FreeRADIUS service after a password is changed or reset by executing `sudo systemctl restart freeradius`. For this to work, the web server user (`www-data`) must have passwordless `sudo` access specifically for this command.
 
