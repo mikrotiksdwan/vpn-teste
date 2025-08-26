@@ -35,13 +35,29 @@ function verify_ssha_password($password, $ssha_hash) {
 // Logout
 if (isset($_GET['logout'])) {
     session_destroy();
-    header('Location: change-password.php');
+    header('Location: index.php');
     exit;
 }
 
 // Processar formulários
 $message = '';
-$current_view = isset($_GET['token']) ? 'reset' : (isset($_POST['recovery']) ? 'recovery' : 'login');
+$current_view = 'login'; // Default view
+
+if (isset($_GET['token'])) {
+    $current_view = 'reset';
+    $token = $_GET['token'];
+
+    $stmt = $pdo->prepare("SELECT email FROM radcheck WHERE recovery_token = ? AND token_expires > NOW()");
+    $stmt->execute([$token]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        $message = '<div class="alert alert-danger">Token inválido ou expirado. Por favor, solicite um novo link de recuperação.</div>';
+        $current_view = 'login';
+    }
+} elseif (isset($_GET['view']) && $_GET['view'] === 'recovery') {
+    $current_view = 'recovery';
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['login'])) {
@@ -62,7 +78,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
     elseif (isset($_POST['change_password'])) {
-        // Trocar senha
+        // Trocar senha (usuário logado)
         if (!isset($_SESSION['user_logged_in'])) {
             $message = '<div class="alert alert-danger">Sessão expirada. Faça login novamente.</div>';
             unset($_SESSION['user_logged_in']);
@@ -87,7 +103,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
-    // ... resto dos outros formulários ...
+    elseif (isset($_POST['request_recovery'])) {
+        // Solicitar recuperação de senha
+        $email = trim($_POST['email']);
+
+        $stmt = $pdo->prepare("SELECT username FROM radcheck WHERE email = ?");
+        $stmt->execute([$email]);
+        $user = $stmt->fetch();
+
+        if ($user) {
+            $token = bin2hex(random_bytes(32));
+            $expires = date('Y-m-d H:i:s', strtotime('+1 hour'));
+
+            $stmt = $pdo->prepare("UPDATE radcheck SET recovery_token = ?, token_expires = ? WHERE email = ?");
+            $stmt->execute([$token, $expires, $email]);
+
+            $recovery_link = "http://{$_SERVER['HTTP_HOST']}{$_SERVER['PHP_SELF']}?token=$token";
+            $subject = "Recuperação de Senha - VPN Portal";
+            $body = "Olá,\n\nClique no link a seguir para redefinir sua senha:\n$recovery_link\n\nO link expira em 1 hora.\n\nSe você não solicitou isso, ignore este email.";
+            $headers = "From: no-reply@vpnportal.com";
+
+            mail($email, $subject, $body, $headers);
+        }
+
+        $message = '<div class="alert alert-info">Se um email correspondente for encontrado, um link de recuperação foi enviado. Verifique sua caixa de entrada e spam.</div>';
+        $current_view = 'login';
+    }
+    elseif (isset($_POST['reset_password'])) {
+        // Redefinir a senha usando o token
+        $token = $_POST['token'];
+        $new_password = trim($_POST['new_password']);
+        $confirm_password = trim($_POST['confirm_password']);
+
+        $stmt = $pdo->prepare("SELECT email FROM radcheck WHERE recovery_token = ? AND token_expires > NOW()");
+        $stmt->execute([$token]);
+        $user = $stmt->fetch();
+
+        if (!$user) {
+            $message = '<div class="alert alert-danger">Token inválido ou expirado. Tente novamente.</div>';
+            $current_view = 'login';
+        } elseif ($new_password !== $confirm_password) {
+            $message = '<div class="alert alert-danger">As senhas não coincidem.</div>';
+            $current_view = 'reset';
+        } elseif (strlen($new_password) < 8) {
+            $message = '<div class="alert alert-danger">A senha deve ter pelo menos 8 caracteres.</div>';
+            $current_view = 'reset';
+        } else {
+            $new_hash = generate_ssha_password($new_password);
+            $email = $user['email'];
+
+            $stmt = $pdo->prepare("UPDATE radcheck SET value = ?, recovery_token = NULL, token_expires = NULL WHERE email = ? AND attribute = 'SSHA-Password'");
+            if ($stmt->execute([$new_hash, $email])) {
+                $stmt_clear = $pdo->prepare("UPDATE radcheck SET recovery_token = NULL, token_expires = NULL WHERE email = ?");
+                $stmt_clear->execute([$email]);
+
+                $message = '<div class="alert alert-success">Sua senha foi redefinida com sucesso! Você já pode fazer login.</div>';
+                shell_exec('sudo systemctl restart freeradius');
+                $current_view = 'login';
+            } else {
+                $message = '<div class="alert alert-danger">Ocorreu um erro ao redefinir a senha.</div>';
+                $current_view = 'reset';
+            }
+        }
+    }
 }
 
 // Se usuário está logado mas não veio do POST, mostrar tela de troca
@@ -143,19 +221,17 @@ if (isset($_SESSION['user_logged_in']) && $_SERVER['REQUEST_METHOD'] !== 'POST')
                     <!-- Trocar Senha (Após Login) -->
                     <?php if ($current_view == 'change' && isset($_SESSION['user_logged_in'])): ?>
                     <div class="text-center mb-4">
-                        <h5>Olá, <?php echo $_SESSION['user_email']; ?></h5>
+                        <h5>Olá, <?php echo htmlspecialchars($_SESSION['user_email']); ?></h5>
                         <p class="text-muted">Digite sua nova senha abaixo</p>
                     </div>
                     <form method="POST">
                         <div class="mb-3">
                             <label class="form-label">Nova Senha</label>
-                            <input type="password" class="form-control" name="new_password" required 
-                                   placeholder="Mínimo 8 caracteres" minlength="8">
+                            <input type="password" class="form-control" name="new_password" required placeholder="Mínimo 8 caracteres" minlength="8">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Confirmar Nova Senha</label>
-                            <input type="password" class="form-control" name="confirm_password" required 
-                                   placeholder="Digite a senha novamente" minlength="8">
+                            <input type="password" class="form-control" name="confirm_password" required placeholder="Digite a senha novamente" minlength="8">
                         </div>
                         <button type="submit" name="change_password" class="btn btn-primary w-100 mb-3">
                             <i class="bi bi-key"></i> Alterar Senha
@@ -168,7 +244,47 @@ if (isset($_SESSION['user_logged_in']) && $_SERVER['REQUEST_METHOD'] !== 'POST')
                     </form>
                     <?php endif; ?>
 
-                    <!-- ... outros formulários ... -->
+                    <!-- Recuperar Senha -->
+                    <?php if ($current_view == 'recovery'): ?>
+                    <div class="text-center mb-4">
+                        <h5>Recuperar Senha</h5>
+                        <p class="text-muted">Digite seu email para receber o link de recuperação.</p>
+                    </div>
+                    <form method="POST">
+                        <div class="mb-3">
+                            <label class="form-label">Email</label>
+                            <input type="email" class="form-control" name="email" required>
+                        </div>
+                        <button type="submit" name="request_recovery" class="btn btn-primary w-100 mb-3">
+                            <i class="bi bi-envelope"></i> Enviar Link de Recuperação
+                        </button>
+                        <div class="text-center">
+                            <a href="index.php" class="text-decoration-none">Voltar ao Login</a>
+                        </div>
+                    </form>
+                    <?php endif; ?>
+
+                    <!-- Resetar Senha -->
+                    <?php if ($current_view == 'reset'): ?>
+                    <div class="text-center mb-4">
+                        <h5>Redefinir Senha</h5>
+                        <p class="text-muted">Crie uma nova senha para sua conta.</p>
+                    </div>
+                    <form method="POST">
+                        <input type="hidden" name="token" value="<?php echo htmlspecialchars($_GET['token']); ?>">
+                        <div class="mb-3">
+                            <label class="form-label">Nova Senha</label>
+                            <input type="password" class="form-control" name="new_password" required minlength="8">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Confirmar Nova Senha</label>
+                            <input type="password" class="form-control" name="confirm_password" required minlength="8">
+                        </div>
+                        <button type="submit" name="reset_password" class="btn btn-primary w-100 mb-3">
+                            <i class="bi bi-key-fill"></i> Redefinir Senha
+                        </button>
+                    </form>
+                    <?php endif; ?>
                 </div>
             </div>
         </div>
