@@ -29,6 +29,6 @@ Route::prefix('password')->group(function () {
         Route::get('/recover', [PasswordController::class, 'showRecoveryForm'])->name('password.request');
         Route::post('/recover', [PasswordController::class, 'requestRecovery']);
         Route::get('/reset/{token}', [PasswordController::class, 'showResetForm'])->name('password.reset');
-        Route::post('/reset', [PasswordController::class, 'resetPassword']);
+        Route::post('/reset', [PasswordController::class, 'resetPassword'])->name('password.update');
     });
 });

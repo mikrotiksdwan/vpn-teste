@@ -7,7 +7,7 @@
     <h5>Redefinir Senha</h5>
     <p class="text-muted">Crie uma nova senha para sua conta.</p>
 </div>
-<form method="POST" action="{{ route('password.reset') }}">
+<form method="POST" action="{{ route('password.update') }}">
     @csrf
     <input type="hidden" name="token" value="{{ $token }}">
     <div class="mb-3">
