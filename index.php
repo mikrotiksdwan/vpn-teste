@@ -1,20 +1,8 @@
 <?php
 session_start();
 
-// Configurações de E-mail (SMTP)
-$smtp_host = 'smtp.example.com';
-$smtp_port = 587;
-$smtp_user = 'user@example.com';
-$smtp_pass = 'your_password';
-$smtp_secure = 'tls'; // 'ssl' or 'tls'
-$smtp_from_email = 'no-reply@example.com';
-$smtp_from_name = 'VPN Portal';
-
-// Configurações do banco
-$db_host = 'localhost';
-$db_name = 'radius';
-$db_user = 'radius';
-$db_pass = 'rt25rt--2025';
+// Carrega as configurações
+require_once 'config.php';
 
 // Conexão com o banco
 try {
@@ -41,10 +29,11 @@ function verify_ssha_password($password, $ssha_hash) {
     return sha1($password . $salt, true) === $hash;
 }
 
-function send_smtp_email($host, $port, $user, $pass, $to, $from_email, $from_name, $subject, $body) {
-    $socket = @fsockopen($host, $port, $errno, $errstr, 15);
+function send_smtp_email($host, $port, $user, $pass, $secure, $to, $from_email, $from_name, $subject, $body) {
+    $conn_host = ($secure === 'ssl') ? "ssl://$host" : $host;
+    $socket = @fsockopen($conn_host, $port, $errno, $errstr, 15);
     if (!$socket) {
-        //error_log("SMTP Error: Could not connect to $host:$port ($errno) $errstr");
+        //error_log("SMTP Error: Could not connect to $conn_host:$port ($errno) $errstr");
         return false;
     }
 
@@ -58,6 +47,22 @@ function send_smtp_email($host, $port, $user, $pass, $to, $from_email, $from_nam
     $server_response = fgets($socket, 4096);
     if (substr($server_response, 0, 3) != '250') {
         fputs($socket, 'HELO ' . $_SERVER['SERVER_NAME'] . "\r\n");
+        fgets($socket, 4096);
+    }
+
+    if ($secure === 'tls') {
+        fputs($socket, "STARTTLS\r\n");
+        $server_response = fgets($socket, 4096);
+        if (substr($server_response, 0, 3) != '220') {
+            //error_log("SMTP Error: STARTTLS failed: " . $server_response);
+            return false;
+        }
+        if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            //error_log("SMTP Error: Failed to enable TLS");
+            return false;
+        }
+        // Re-EHLO after TLS
+        fputs($socket, 'EHLO ' . $_SERVER['SERVER_NAME'] . "\r\n");
         fgets($socket, 4096);
     }
 
@@ -194,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $subject = "Recuperação de Senha - VPN Portal";
             $body = "Olá,\n\nClique no link a seguir para redefinir sua senha:\n$recovery_link\n\nO link expira em 1 hora.\n\nSe você não solicitou isso, ignore este email.";
 
-            send_smtp_email($smtp_host, $smtp_port, $smtp_user, $smtp_pass, $email, $smtp_from_email, $smtp_from_name, $subject, $body);
+            send_smtp_email($smtp_host, $smtp_port, $smtp_user, $smtp_pass, $smtp_secure, $email, $smtp_from_email, $smtp_from_name, $subject, $body);
         }
 
         $message = '<div class="alert alert-info">Se um email correspondente for encontrado, um link de recuperação foi enviado. Verifique sua caixa de entrada e spam.</div>';
