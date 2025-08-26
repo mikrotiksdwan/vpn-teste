@@ -62,19 +62,19 @@ if (isset($_GET['token'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['login'])) {
         // Login normal
-        $email = trim($_POST['email']);
+        $username = trim($_POST['username']);
         $password = trim($_POST['password']);
         
-        $stmt = $pdo->prepare("SELECT username, value as password_hash FROM radcheck WHERE email = ? AND attribute = 'SSHA-Password'");
-        $stmt->execute([$email]);
+        $stmt = $pdo->prepare("SELECT username, email, value as password_hash FROM radcheck WHERE username = ? AND attribute = 'SSHA-Password'");
+        $stmt->execute([$username]);
         $user = $stmt->fetch();
         
         if ($user && verify_ssha_password($password, $user['password_hash'])) {
-            $_SESSION['user_email'] = $email;
+            $_SESSION['user_email'] = $user['email'];
             $_SESSION['user_logged_in'] = true;
             $current_view = 'change';
         } else {
-            $message = '<div class="alert alert-danger">Email ou senha incorretos!</div>';
+            $message = '<div class="alert alert-danger">Usuário ou senha incorretos!</div>';
         }
     }
     elseif (isset($_POST['change_password'])) {
@@ -204,8 +204,8 @@ if (isset($_SESSION['user_logged_in']) && $_SERVER['REQUEST_METHOD'] !== 'POST')
                     <?php if ($current_view == 'login'): ?>
                     <form method="POST">
                         <div class="mb-3">
-                            <label class="form-label">Email</label>
-                            <input type="email" class="form-control" name="email" required>
+                            <label class="form-label">Usuário</label>
+                            <input type="text" class="form-control" name="username" required>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Senha</label>
