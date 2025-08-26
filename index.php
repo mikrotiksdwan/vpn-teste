@@ -1,12 +1,19 @@
 <?php
 session_start();
 
-// Carrega as configurações
-require_once 'config.php';
+require __DIR__ . '/vendor/autoload.php';
+
+use Dotenv\Dotenv;
+use PHPMailer\PHPMailer\PHPMailer;
+use PHPMailer\PHPMailer\Exception;
+
+// Carregar variáveis de ambiente
+$dotenv = Dotenv::createImmutable(__DIR__);
+$dotenv->load();
 
 // Conexão com o banco
 try {
-    $pdo = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8", $db_user, $db_pass);
+    $pdo = new PDO("mysql:host=" . getenv('DB_HOST') . ";dbname=" . getenv('DB_NAME') . ";charset=utf8", getenv('DB_USER'), getenv('DB_PASS'));
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch (PDOException $e) {
     die("Erro de conexão: " . $e->getMessage());
@@ -29,83 +36,36 @@ function verify_ssha_password($password, $ssha_hash) {
     return sha1($password . $salt, true) === $hash;
 }
 
-function send_smtp_email($host, $port, $user, $pass, $secure, $to, $from_email, $from_name, $subject, $body) {
-    $conn_host = ($secure === 'ssl') ? "ssl://$host" : $host;
-    $socket = @fsockopen($conn_host, $port, $errno, $errstr, 15);
-    if (!$socket) {
-        //error_log("SMTP Error: Could not connect to $conn_host:$port ($errno) $errstr");
+function send_recovery_email($to, $subject, $body) {
+    $mail = new PHPMailer(true);
+
+    try {
+        // Configurações do servidor
+        // $mail->SMTPDebug = 2; // Habilita debug
+        $mail->isSMTP();
+        $mail->Host       = getenv('SMTP_HOST');
+        $mail->SMTPAuth   = true;
+        $mail->Username   = getenv('SMTP_USER');
+        $mail->Password   = getenv('SMTP_PASS');
+        $mail->SMTPSecure = getenv('SMTP_SECURE');
+        $mail->Port       = getenv('SMTP_PORT');
+        $mail->CharSet    = 'UTF-8';
+
+        // Destinatários
+        $mail->setFrom(getenv('SMTP_FROM_EMAIL'), getenv('SMTP_FROM_NAME'));
+        $mail->addAddress($to);
+
+        // Conteúdo
+        $mail->isHTML(false);
+        $mail->Subject = $subject;
+        $mail->Body    = $body;
+
+        $mail->send();
+        return true;
+    } catch (Exception $e) {
+        // error_log("Message could not be sent. Mailer Error: {$mail->ErrorInfo}");
         return false;
     }
-
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '220') {
-        //error_log("SMTP Error: " . $server_response);
-        return false;
-    }
-
-    fputs($socket, 'EHLO ' . $_SERVER['SERVER_NAME'] . "\r\n");
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '250') {
-        fputs($socket, 'HELO ' . $_SERVER['SERVER_NAME'] . "\r\n");
-        fgets($socket, 4096);
-    }
-
-    if ($secure === 'tls') {
-        fputs($socket, "STARTTLS\r\n");
-        $server_response = fgets($socket, 4096);
-        if (substr($server_response, 0, 3) != '220') {
-            //error_log("SMTP Error: STARTTLS failed: " . $server_response);
-            return false;
-        }
-        if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-            //error_log("SMTP Error: Failed to enable TLS");
-            return false;
-        }
-        // Re-EHLO after TLS
-        fputs($socket, 'EHLO ' . $_SERVER['SERVER_NAME'] . "\r\n");
-        fgets($socket, 4096);
-    }
-
-    fputs($socket, "AUTH LOGIN\r\n");
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '334') { return false; }
-
-    fputs($socket, base64_encode($user) . "\r\n");
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '334') { return false; }
-
-    fputs($socket, base64_encode($pass) . "\r\n");
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '235') { return false; }
-
-    fputs($socket, "MAIL FROM: <$from_email>\r\n");
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '250') { return false; }
-
-    fputs($socket, "RCPT TO: <$to>\r\n");
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '250') { return false; }
-
-    fputs($socket, "DATA\r\n");
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '354') { return false; }
-
-    $headers = "From: \"$from_name\" <$from_email>\r\n";
-    $headers .= "To: <$to>\r\n";
-    $headers .= "Subject: $subject\r\n";
-    $headers .= "Date: " . date('r') . "\r\n";
-    $headers .= "MIME-Version: 1.0\r\n";
-    $headers .= "Content-Type: text/plain; charset=utf-8\r\n";
-    $headers .= "Content-Transfer-Encoding: 8bit\r\n";
-
-    fputs($socket, $headers . "\r\n" . $body . "\r\n.\r\n");
-    $server_response = fgets($socket, 4096);
-    if (substr($server_response, 0, 3) != '250') { return false; }
-
-    fputs($socket, "QUIT\r\n");
-    fclose($socket);
-
-    return true;
 }
 
 // Logout
@@ -199,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $subject = "Recuperação de Senha - VPN Portal";
             $body = "Olá,\n\nClique no link a seguir para redefinir sua senha:\n$recovery_link\n\nO link expira em 1 hora.\n\nSe você não solicitou isso, ignore este email.";
 
-            send_smtp_email($smtp_host, $smtp_port, $smtp_user, $smtp_pass, $smtp_secure, $email, $smtp_from_email, $smtp_from_name, $subject, $body);
+            send_recovery_email($email, $subject, $body);
         }
 
         $message = '<div class="alert alert-info">Se um email correspondente for encontrado, um link de recuperação foi enviado. Verifique sua caixa de entrada e spam.</div>';
