@@ -47,7 +47,19 @@ npm run build
 ```
 This will create a `public/build` directory containing the compiled CSS and a `manifest.json` file, which is required for the application to run.
 
-### 5. Configure Environment
+### 5. Database Setup
+
+After configuring your `.env` file, run the database migrations to add the `is_admin` column required for admin functionality. Then, seed the database to create the initial admin user.
+
+```bash
+# Run migrations
+php artisan migrate
+
+# Seed the database
+php artisan db:seed
+```
+
+### 7. Configure Environment
 
 Copy the example environment file and generate an application key.
 
@@ -110,7 +122,7 @@ server {
 ```
 Remember to enable the site and restart Nginx.
 
-### 7. Set Directory Permissions
+### 8. Set Directory Permissions
 
 The web server user (e.g., `www-data`) needs write permissions on the `storage` and `bootstrap/cache` directories.
 
@@ -119,7 +131,7 @@ sudo chown -R www-data:www-data storage bootstrap/cache
 sudo chmod -R 775 storage bootstrap/cache
 ```
 
-### 8. Important: FreeRADIUS Service Restart
+### 9. Important: FreeRADIUS Service Restart
 
 This application restarts the FreeRADIUS service after a password is changed or reset by executing `sudo systemctl restart freeradius`. For this to work, the web server user (`www-data`) must have passwordless `sudo` access specifically for this command.
 

@@ -36,10 +36,19 @@ class PasswordController extends Controller
                         ->first();
 
         if ($user && SshaHashService::verify($credentials['password'], '{SSHA}' . $user->value)) {
-            // Manually log in the user by setting a session variable.
-            // We can't use Laravel's Auth since we don't have a standard User model.
-            session(['user_email' => $user->email, 'user_logged_in' => true]);
+            // Manually log in the user by setting session variables.
+            session([
+                'user_email' => $user->email,
+                'user_logged_in' => true,
+                'is_admin' => (bool) $user->is_admin,
+            ]);
             $request->session()->regenerate();
+
+            if ($user->is_admin) {
+                // Redirect to a future admin dashboard route
+                return redirect()->intended('/admin/dashboard');
+            }
+
             return redirect()->intended(route('password.change'));
         }
 

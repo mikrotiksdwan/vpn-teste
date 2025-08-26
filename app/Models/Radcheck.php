@@ -43,5 +43,6 @@ class Radcheck extends Model
         'email',
         'recovery_token',
         'token_expires',
+        'is_admin',
     ];
 }

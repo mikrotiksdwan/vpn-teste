@@ -32,3 +32,18 @@ Route::prefix('password')->group(function () {
         Route::post('/reset', [PasswordController::class, 'resetPassword'])->name('password.update');
     });
 });
+
+// Admin Routes
+Route::prefix('admin')->middleware(['custom.auth', 'admin'])->group(function () {
+    Route::get('/dashboard', [\App\Http\Controllers\Admin\AdminController::class, 'dashboard'])->name('admin.dashboard');
+
+    // User Invitation
+    Route::get('/users/create', [\App\Http\Controllers\Admin\AdminController::class, 'create'])->name('admin.users.create');
+    Route::post('/users', [\App\Http\Controllers\Admin\AdminController::class, 'store'])->name('admin.users.store');
+
+    // User Deletion
+    Route::delete('/users/{user}', [\App\Http\Controllers\Admin\AdminController::class, 'destroy'])->name('admin.users.destroy');
+
+    // Admin Promotion
+    Route::post('/users/{user}/promote', [\App\Http\Controllers\Admin\AdminController::class, 'promote'])->name('admin.users.promote');
+});

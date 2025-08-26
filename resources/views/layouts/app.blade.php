@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>@yield('title', 'Gerenciamento de Senha VPN')</title>
-    @vite('resources/css/app.css')
+    @if (app()->environment() !== 'testing')
+        @vite('resources/css/app.css')
+    @endif
     <style>
         body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         .auth-container { max-width: 400px; margin: 50px auto; }
